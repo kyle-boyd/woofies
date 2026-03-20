@@ -1,22 +1,35 @@
-file="$1"
-if [ -z "$file" ]
-then
-   file="event.json"
+#!/bin/bash
+
+# Load .env.local if running locally (Vercel injects these automatically)
+if [ -f "$(dirname "$0")/.env.local" ]; then
+  set -a
+  source "$(dirname "$0")/.env.local"
+  set +a
 fi
 
+if [ -z "$SYNCROFY_API_KEY" ] || [ -z "$SYNCROFY_ENDPOINT" ] || [ -z "$SYNCROFY_AUTH_HEADER" ]; then
+  echo "Error: SYNCROFY_API_KEY, SYNCROFY_ENDPOINT, and SYNCROFY_AUTH_HEADER must be set"
+  exit 1
+fi
 
-#shift
+if [ "$#" -eq 0 ]; then
+  set -- "event.json"
+fi
 
-for file in $*
-do
-   echo $file
+for file in "$@"; do
+  if [ ! -f "$file" ]; then
+    echo "Warning: file not found, skipping: $file"
+    continue
+  fi
 
-   curl -v -m 180 --location  'https://events.stage.syncrofy.com/events/upload/97b47e4d-578a-41cd-a396-ce8fc94c869f/c0198971-0858-4f10-b224-29467c6ca5f0' \
-      --header 'token: 1a0ec115-d165-49a5-88ad-57a86f77b0c9' \
-      --header 'Content-Type: application/json' \
-      --data-binary "@$file"
+  echo "$file"
 
-   grep "coreId" $file | sort -u
+  curl -v -m 180 --location "$SYNCROFY_ENDPOINT" \
+    --header "$SYNCROFY_AUTH_HEADER: $SYNCROFY_API_KEY" \
+    --header 'Content-Type: application/json' \
+    --data-binary "@$file"
+
+  grep "coreId" "$file" | sort -u
 
 done
  
