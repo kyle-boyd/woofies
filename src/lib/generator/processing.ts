@@ -18,7 +18,7 @@ const PROCESSING_STEPS = [
 const STEP_ORDER = [
   "Normalize Data", "Generate Checksum", "Validate Checksum", "Store Checksum",
   "Add to Archive", "Validate Archive", "Virus Scan",
-];
+] as const;
 
 function randomChecksum(): string {
   return randomBytes(16).toString("hex");
