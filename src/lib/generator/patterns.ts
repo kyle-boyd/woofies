@@ -193,7 +193,7 @@ export function patternStagingFailure(
   const events: FtvEvent[] = [];
   let t = startTime;
 
-  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "SUCCESS", source));
+  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "FAILED", source));
 
   const [procEvents, afterProc] = randomProcessingSteps(t, arrivedKey, filename, source);
   events.push(...procEvents);

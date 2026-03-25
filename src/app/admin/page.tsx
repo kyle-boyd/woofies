@@ -6,7 +6,7 @@ import type { ScenarioState } from "@/lib/state/types";
 import { ScenarioCard } from "@/components/admin/ScenarioCard";
 import { BulkControls } from "@/components/admin/BulkControls";
 import { TestPanel } from "@/components/admin/TestPanel";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -35,6 +35,7 @@ export default function AdminPage() {
   const { data: states, mutate } = useSWR<ScenarioState[]>("/api/scenarios", fetcher, {
     refreshInterval: 3000,
   });
+  const [isResetting, setIsResetting] = useState(false);
 
   // Rehydrate server state from localStorage on first load
   useEffect(() => {
@@ -59,7 +60,7 @@ export default function AdminPage() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         <TestPanel />
 
-        <BulkControls onRefresh={() => mutate()} />
+        <BulkControls onRefresh={() => mutate()} onResetStart={() => setIsResetting(true)} onResetEnd={() => setIsResetting(false)} />
 
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Scenarios</h2>
 
@@ -75,6 +76,7 @@ export default function AdminPage() {
                 meta={meta}
                 state={state}
                 onRefresh={() => mutate()}
+                isResetting={isResetting}
               />
             );
           })

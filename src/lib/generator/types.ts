@@ -19,6 +19,8 @@ export type Transfer = [string, FtvEvent[]];
 export interface ScenarioResult {
   transfers: Transfer[];
   injectedKeys: string[]; // arrivedFileKeys of injected anomalies (failures, misroutes, etc.)
+  dynamicText?: { situation?: string; tasks?: string[] };
+  answerKeyNotes?: string; // optional facilitator-facing context added to the answer key
 }
 
 // Mutable context passed through generator calls (replaces Python module globals)
@@ -30,9 +32,9 @@ export interface GeneratorContext {
 
 export function makeContext(opts?: Partial<GeneratorContext>): GeneratorContext {
   return {
-    keyCounter: opts?.keyCounter ?? 0,
-    batchCounter: opts?.batchCounter ?? 1,
-    loanIdCounter: opts?.loanIdCounter ?? 4000,
+    keyCounter: opts?.keyCounter ?? Math.floor(Math.random() * 1000),
+    batchCounter: opts?.batchCounter ?? Math.floor(Math.random() * 9000) + 1,
+    loanIdCounter: opts?.loanIdCounter ?? Math.floor(Math.random() * 90000) + 10000,
   };
 }
 
@@ -58,4 +60,5 @@ export interface AnswerKey {
   totalFailed: number;
   totalStalled: number;
   findings: Finding[];
+  notes?: string; // scenario-specific facilitator context
 }

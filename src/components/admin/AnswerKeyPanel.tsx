@@ -58,6 +58,11 @@ export function AnswerKeyPanel({ answerKey }: { answerKey: AnswerKey }) {
             <div><span className="font-medium text-red-700">{answerKey.totalFailed}</span> failed</div>
             <div><span className="font-medium text-orange-700">{answerKey.totalStalled}</span> stalled</div>
           </div>
+          {answerKey.notes && (
+            <div className="mb-3 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5">
+              {answerKey.notes}
+            </div>
+          )}
           {answerKey.findings.map(f => (
             <FindingCard key={f.arrivedfileKey} f={f} />
           ))}

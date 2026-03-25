@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { generateDay } from "@/lib/generator/dayGenerator";
 import { isWeekend } from "@/lib/generator/timing";
-import { storeSubmissionQueue } from "@/lib/state/store";
 import { DateTime } from "luxon";
 
 export async function POST(req: NextRequest) {
@@ -28,11 +26,8 @@ export async function POST(req: NextRequest) {
     allTransfers.push(...(day as Array<[string, unknown[]]>));
   }
 
-  const sessionId = randomUUID();
-  storeSubmissionQueue(sessionId, allTransfers);
-
   return NextResponse.json({
-    sessionId,
+    transfers: allTransfers,
     total: allTransfers.length,
     dates,
   });

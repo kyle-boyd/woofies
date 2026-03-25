@@ -95,7 +95,8 @@ export function buildAnswerKey(
   scenarioId: number,
   targetDate: string,
   allTransfers: Transfer[],
-  injectedKeys: string[]
+  injectedKeys: string[],
+  notes?: string
 ): AnswerKey {
   const scenarioMeta = SCENARIOS.find(s => s.id === scenarioId);
   const scenarioName = scenarioMeta?.name ?? `Scenario ${scenarioId}`;
@@ -156,5 +157,6 @@ export function buildAnswerKey(
     totalFailed,
     totalStalled,
     findings,
+    ...(notes ? { notes } : {}),
   };
 }

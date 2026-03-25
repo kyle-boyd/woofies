@@ -24,6 +24,15 @@ import type { Transfer, ScenarioResult, GeneratorContext } from "./types";
 
 const ET = "America/New_York";
 
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 // -----------------------------------------------------------------------
 // Scenario 1: Monday Morning Triage
 // -----------------------------------------------------------------------
@@ -38,29 +47,32 @@ export function scenario1(dateStr: string): ScenarioResult {
     transfers.push(...generateDay(d, 1.0, true, c));
   }
 
-  // 1. Staging failure from Lakeshore (Saturday)
+  // Randomly assign 4 failure modes to 4 of the 5 available partners
+  const [p1, p2, p3, p4] = shuffled(["meridian", "lakeshore", "evergreen", "atlas", "jdeere"]);
+
+  // 1. Staging failure (Saturday)
   const t1 = specificTime(saturdayStr, 10 + randInt(0, 5), randInt(0, 59));
-  const [key1, evts1] = patternStagingFailure("lakeshore", t1, c, undefined, undefined, "/staging/lakeshore/outbound");
+  const [key1, evts1] = patternStagingFailure(p1, t1, c, undefined, undefined, `/staging/${p1}/outbound`);
   transfers.push([key1, evts1]);
   injectedKeys.push(key1);
 
-  // 2. Partial file from Meridian (Sunday)
+  // 2. Partial file (Sunday)
   const t2 = specificTime(sundayStr, 9 + randInt(0, 4), randInt(0, 59));
-  const [key2, evts2] = patternPartialFile("meridian", t2, c);
+  const [key2, evts2] = patternPartialFile(p2, t2, c);
   transfers.push([key2, evts2]);
   injectedKeys.push(key2);
 
-  // 3. Delivery failure from Evergreen (Sunday)
+  // 3. Delivery failure (Sunday)
   const t3 = specificTime(sundayStr, 11 + randInt(0, 5), randInt(0, 59));
   const dateForFilename = sundayStr.replace(/-/g, "");
-  const [fn3] = generateFilename("evergreen", dateForFilename, c);
-  const [key3, evts3] = patternStagingFailure("evergreen", t3, c, fn3);
+  const [fn3] = generateFilename(p3, dateForFilename, c);
+  const [key3, evts3] = patternStagingFailure(p3, t3, c, fn3);
   transfers.push([key3, evts3]);
   injectedKeys.push(key3);
 
-  // 4. Stalled Atlas Payroll (Sunday, 2+ hours before "now")
+  // 4. Stalled (Sunday, 2+ hours before "now")
   const t4 = specificTime(sundayStr, 8 + randInt(0, 5), randInt(0, 59));
-  const [key4, evts4] = patternStalled("atlas", t4, c);
+  const [key4, evts4] = patternStalled(p4, t4, c);
   transfers.push([key4, evts4]);
   injectedKeys.push(key4);
 
@@ -89,29 +101,34 @@ export function scenario2(dateStr: string): ScenarioResult {
     }
   }
 
-  // PGP failures from Meridian (8-12)
-  const meridianCount = randInt(8, 12);
-  const meridianTimes = generateSortedTimes(dateStr, meridianCount).filter(t => {
+  // Randomly assign which PGP partner has the bulk of failures and which has fewer
+  const [majorPgp, minorPgp] = Math.random() < 0.5
+    ? ["meridian", "jdeere"]
+    : ["jdeere", "meridian"];
+
+  // Major PGP partner: 8-12 failures, first one is the "corrupted input data" outlier
+  const majorCount = randInt(8, 12);
+  const majorTimes = generateSortedTimes(dateStr, majorCount).filter(t => {
     const h = t.setZone(ET).hour;
     return h >= 6 && h <= 12;
-  }).slice(0, meridianCount);
+  }).slice(0, majorCount);
 
-  for (let i = 0; i < meridianTimes.length; i++) {
+  for (let i = 0; i < majorTimes.length; i++) {
     const variant = i === 0 ? "corrupted input data" : "invalid key";
-    const [key, evts] = patternPgpFailure("meridian", meridianTimes[i], c, undefined, undefined, variant);
+    const [key, evts] = patternPgpFailure(majorPgp, majorTimes[i], c, undefined, undefined, variant);
     transfers.push([key, evts]);
     injectedKeys.push(key);
   }
 
-  // PGP failures from John Deere (4-6)
-  const jdeereCount = randInt(4, 6);
-  const jdeereTimes = generateSortedTimes(dateStr, jdeereCount).filter(t => {
+  // Minor PGP partner: 4-6 failures, all "invalid key"
+  const minorCount = randInt(4, 6);
+  const minorTimes = generateSortedTimes(dateStr, minorCount).filter(t => {
     const h = t.setZone(ET).hour;
     return h >= 6 && h <= 12;
-  }).slice(0, jdeereCount);
+  }).slice(0, minorCount);
 
-  for (const t of jdeereTimes) {
-    const [key, evts] = patternPgpFailure("jdeere", t, c, undefined, undefined, "invalid key");
+  for (const t of minorTimes) {
+    const [key, evts] = patternPgpFailure(minorPgp, t, c, undefined, undefined, "invalid key");
     transfers.push([key, evts]);
     injectedKeys.push(key);
   }
@@ -122,14 +139,43 @@ export function scenario2(dateStr: string): ScenarioResult {
 // -----------------------------------------------------------------------
 // Scenario 3: New Partner Onboarding
 // -----------------------------------------------------------------------
+const ONBOARDING_PARTNERS = {
+  lakeshore: {
+    name: "Lakeshore Clearing",
+    fileTypesDesc: "margin_call_*.dat and collateral_*.dat",
+    destApp: "Pinnacle Treasury App",
+    destPath: "/Treasury/Inbox",
+    destHost: "sftp-treasury.pinnaclenb.com",
+  },
+  atlas: {
+    name: "Atlas Payroll Services",
+    fileTypesDesc: "payroll_batch_*.csv",
+    destApp: "Pinnacle Payroll System",
+    destPath: "/Payroll/Inbox",
+    destHost: "sftp-payroll.pinnaclenb.com",
+  },
+  evergreen: {
+    name: "Evergreen Insurance Co.",
+    fileTypesDesc: "claims_*.json",
+    destApp: "Pinnacle Claims Processing",
+    destPath: "/api/claims/ingest",
+    destHost: "claims-api.pinnaclenb.com",
+  },
+} as const;
+
 export function scenario3(dateStr: string): ScenarioResult {
   const c = makeContext();
   const transfers: Transfer[] = [];
   const injectedKeys: string[] = [];
 
-  // Normal background from all partners except Lakeshore
+  // Pick a random partner as the newly onboarded one
+  const onboardingKeys = Object.keys(ONBOARDING_PARTNERS) as Array<keyof typeof ONBOARDING_PARTNERS>;
+  const newPartnerKey = onboardingKeys[Math.floor(Math.random() * onboardingKeys.length)];
+  const onboarding = ONBOARDING_PARTNERS[newPartnerKey];
+
+  // Normal background from all partners except the new partner
   for (const [partnerKey, partner] of Object.entries(PARTNERS)) {
-    if (partnerKey === "lakeshore") continue;
+    if (partnerKey === newPartnerKey) continue;
     const [lo, hi] = partner.volume_range;
     const count = randInt(lo, hi);
     const times = generateSortedTimes(dateStr, count);
@@ -138,42 +184,67 @@ export function scenario3(dateStr: string): ScenarioResult {
     }
   }
 
-  // Lakeshore: 8-10 transfers
-  const lakeCount = randInt(8, 10);
-  const lakeTimes = generateSortedTimes(dateStr, lakeCount);
+  // New partner: 8-10 transfers
+  const partnerCount = randInt(8, 10);
+  const partnerTimes = generateSortedTimes(dateStr, partnerCount);
 
-  for (let i = 0; i < lakeCount; i++) {
-    const t = lakeTimes[i];
-    if (i === lakeCount - 2) {
-      // Misrouted: delivers to Operations instead of Treasury
-      const [key, evts] = patternHappyPath("lakeshore", t, c, undefined, undefined, "operations");
+  for (let i = 0; i < partnerCount; i++) {
+    const t = partnerTimes[i];
+    if (i === partnerCount - 2) {
+      // Misrouted: delivers to Operations instead of correct destination
+      const [key, evts] = patternHappyPath(newPartnerKey, t, c, undefined, undefined, "operations");
       transfers.push([key, evts]);
       injectedKeys.push(key);
-    } else if (i === lakeCount - 1) {
+    } else if (i === partnerCount - 1) {
       // Slow delivery
-      const [key, evts] = patternSlowDelivery("lakeshore", t, c, undefined, undefined, 45);
+      const [key, evts] = patternSlowDelivery(newPartnerKey, t, c, undefined, undefined, 45);
       transfers.push([key, evts]);
       injectedKeys.push(key);
     } else {
-      transfers.push(patternHappyPath("lakeshore", t, c));
+      transfers.push(patternHappyPath(newPartnerKey, t, c));
     }
   }
 
-  return { transfers, injectedKeys };
+  return {
+    transfers,
+    injectedKeys,
+    dynamicText: {
+      situation: `${onboarding.name} was onboarded as a new partner last week. You are doing a post-onboarding health check on their transfer activity to verify the configuration is correct. Per the onboarding spec, ${onboarding.name} sends ${onboarding.fileTypesDesc} and all of them should be delivered to the ${onboarding.destApp} (${onboarding.destPath} on ${onboarding.destHost}).`,
+    },
+    answerKeyNotes: `${onboarding.name} generated ${partnerCount} transfers in this run.`,
+  };
 }
 
 // -----------------------------------------------------------------------
 // Scenario 4: Where's the Settlement File?
 // -----------------------------------------------------------------------
+const MISSING_FILE_PARTNERS = {
+  meridian: {
+    name: "Meridian Capital",
+    filePrefix: "settlement",
+    fileLabel: "settlement file",
+  },
+  lakeshore: {
+    name: "Lakeshore Clearing",
+    filePrefix: "margin_call",
+    fileLabel: "margin call file",
+  },
+} as const;
+
 export function scenario4(dateStr: string): ScenarioResult {
   const c = makeContext();
   const transfers: Transfer[] = [];
   const injectedKeys: string[] = [];
   const dateYMD = dateStr.replace(/-/g, "");
 
-  // Normal background (afternoon only, skip Meridian)
+  // Pick which partner's sequential files are the subject of this scenario
+  const filePartnerKeys = Object.keys(MISSING_FILE_PARTNERS) as Array<keyof typeof MISSING_FILE_PARTNERS>;
+  const filePartnerKey = filePartnerKeys[Math.floor(Math.random() * filePartnerKeys.length)];
+  const fileConfig = MISSING_FILE_PARTNERS[filePartnerKey];
+
+  // Normal background (afternoon only, skip the file partner)
   for (const [partnerKey, partner] of Object.entries(PARTNERS)) {
-    if (partnerKey === "meridian") continue;
+    if (partnerKey === filePartnerKey) continue;
     const [lo, hi] = partner.volume_range;
     const count = Math.max(1, randInt(Math.floor(lo / 3), Math.floor(hi / 3)));
     const times = generateSortedTimes(dateStr, count).filter(t => {
@@ -185,30 +256,41 @@ export function scenario4(dateStr: string): ScenarioResult {
     }
   }
 
-  // 5 Meridian settlement files — first 4 succeed, 5th fails
-  const settlementTimes = generateSortedTimes(dateStr, 5).filter(t => {
+  // 5 sequential files — first 4 succeed, 5th fails
+  const fileTimes = generateSortedTimes(dateStr, 5).filter(t => {
     const h = t.setZone(ET).hour;
     return h >= 12 && h <= 17;
   }).slice(0, 5);
 
-  // Ensure we have exactly 5 times, pad if needed
-  while (settlementTimes.length < 5) {
-    settlementTimes.push(specificTime(dateStr, 13 + settlementTimes.length, randInt(0, 59)));
+  while (fileTimes.length < 5) {
+    fileTimes.push(specificTime(dateStr, 13 + fileTimes.length, randInt(0, 59)));
   }
 
   for (let i = 0; i < 5; i++) {
-    const fn = `settlement_${dateYMD}_${String(i + 1).padStart(3, "0")}.dat`;
-    const t = settlementTimes[i];
+    const fn = `${fileConfig.filePrefix}_${dateYMD}_${String(i + 1).padStart(3, "0")}.dat`;
+    const t = fileTimes[i];
     if (i < 4) {
-      transfers.push(patternHappyPath("meridian", t, c, fn));
+      transfers.push(patternHappyPath(filePartnerKey, t, c, fn));
     } else {
-      const [key, evts] = patternStagingFailure("meridian", t, c, fn, undefined, "/staging/meridian/outbound");
+      const [key, evts] = patternStagingFailure(filePartnerKey, t, c, fn, undefined, `/staging/${filePartnerKey}/outbound`);
       transfers.push([key, evts]);
       injectedKeys.push(key);
     }
   }
 
-  return { transfers, injectedKeys };
+  return {
+    transfers,
+    injectedKeys,
+    dynamicText: {
+      situation: `It's mid-afternoon. The Treasury team just called — they received ${fileConfig.fileLabel}s 001 through 004 from ${fileConfig.name} but file 005 is missing. They need it by end of day for reconciliation.`,
+      tasks: [
+        `Find ${fileConfig.fileLabel} 005. Is it in the system?`,
+        "What happened to it? Where exactly did it fail?",
+        "What's the error message? What does it tell you about the root cause?",
+        "What would you tell the Treasury team?",
+      ],
+    },
+  };
 }
 
 // -----------------------------------------------------------------------
@@ -238,7 +320,7 @@ export function scenario5(dateStr: string): ScenarioResult {
   const regFiles: string[] = [];
   for (const rtype of ["call_report", "fr2900", "ffiec009"]) {
     for (let seq = 1; seq <= 4; seq++) {
-      regFiles.push(`reg_${rtype}_${dateYMD}.dat`);
+      regFiles.push(`reg_${rtype}_${String(seq).padStart(3, "0")}_${dateYMD}.dat`);
     }
   }
 
@@ -246,6 +328,12 @@ export function scenario5(dateStr: string): ScenarioResult {
   for (let i = regFiles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [regFiles[i], regFiles[j]] = [regFiles[j], regFiles[i]];
+  }
+
+  // Ensure a fr2900 file is at position 0 so the retry-then-success always hits it
+  const fr2900Idx = regFiles.findIndex(f => f.includes("fr2900"));
+  if (fr2900Idx > 0) {
+    [regFiles[0], regFiles[fr2900Idx]] = [regFiles[fr2900Idx], regFiles[0]];
   }
 
   // 11 times between 1-4 PM, 1 late at 4:15 PM
@@ -326,9 +414,11 @@ export function scenario6(dateStr: string): ScenarioResult {
     }
   }
 
-  // The specific John Deere file at 9:15 AM
+  // The specific John Deere file at 9:15 AM — random ID each run
+  const loanId6 = randInt(1000, 9999);
+  const targetFilename6 = `loan_pkg_${loanId6}.zip.pgp`;
   const targetTime = specificTime(dateStr, 9, 15, 0);
-  const [key1, evts1] = patternHappyPath("jdeere", targetTime, c, "loan_pkg_4471.zip.pgp");
+  const [key1, evts1] = patternHappyPath("jdeere", targetTime, c, targetFilename6);
   transfers.push([key1, evts1]);
   injectedKeys.push(key1);
 
@@ -342,7 +432,19 @@ export function scenario6(dateStr: string): ScenarioResult {
     transfers.push(patternHappyPath("jdeere", t, c));
   }
 
-  return { transfers, injectedKeys };
+  return {
+    transfers,
+    injectedKeys,
+    dynamicText: {
+      situation: `You sent ${targetFilename6} to Pinnacle at 9:15 AM. Your internal team is asking for confirmation that Pinnacle received it successfully before they proceed with the loan processing workflow.`,
+      tasks: [
+        `Log into the portal. Find ${targetFilename6}.`,
+        "Was it received successfully? What status do you see?",
+        "Can you confirm when it was received and verify the file size?",
+        "Write a one-sentence confirmation message to your internal team.",
+      ],
+    },
+  };
 }
 
 // -----------------------------------------------------------------------
@@ -364,14 +466,16 @@ export function scenario7(dateStr: string): ScenarioResult {
     }
   }
 
-  // John Deere: 8-10 successful, 1 virus scan failure mid-day
+  // John Deere: 8-10 successful, 1 virus scan failure mid-day — random ID each run
+  const loanId7 = randInt(1000, 9999);
+  const targetFilename7 = `loan_pkg_${loanId7}.zip.pgp`;
   const jdCount = randInt(8, 10);
   const jdTimes = generateSortedTimes(dateStr, jdCount + 1);
   const failIdx = Math.floor(jdCount / 2);
 
   for (let i = 0; i < jdTimes.length; i++) {
     if (i === failIdx) {
-      const [key, evts] = patternVirusScan("jdeere", jdTimes[i], c, "loan_pkg_4502.zip.pgp");
+      const [key, evts] = patternVirusScan("jdeere", jdTimes[i], c, targetFilename7);
       transfers.push([key, evts]);
       injectedKeys.push(key);
     } else {
@@ -379,7 +483,13 @@ export function scenario7(dateStr: string): ScenarioResult {
     }
   }
 
-  return { transfers, injectedKeys };
+  return {
+    transfers,
+    injectedKeys,
+    dynamicText: {
+      situation: `John Deere sent several loan packages to Pinnacle today. One of them — ${targetFilename7} — was rejected. You need to understand why so you can report back to your team.`,
+    },
+  };
 }
 
 // -----------------------------------------------------------------------
@@ -393,13 +503,23 @@ export function scenario8(dateStr: string): ScenarioResult {
   // Full day of normal traffic
   transfers.push(...generateDay(dateStr, 1.0, isWeekend(dateStr), c));
 
-  // Inject the specific partial file failure
+  // Inject the specific partial file failure — random ID and sizes each run
+  const loanId8 = randInt(1000, 9999);
+  const targetFilename8 = `loan_pkg_${loanId8}.zip.pgp`;
+  const expectedBytes8 = randInt(150000, 500000);
+  const receivedBytes8 = randInt(Math.floor(expectedBytes8 / 5), Math.floor(expectedBytes8 / 2));
   const failTime = specificTime(dateStr, 10 + randInt(0, 3), randInt(0, 59));
-  const [key, evts] = patternPartialFile("jdeere", failTime, c, "loan_pkg_4488.zip.pgp", 245000, 112000);
+  const [key, evts] = patternPartialFile("jdeere", failTime, c, targetFilename8, expectedBytes8, receivedBytes8);
   transfers.push([key, evts]);
   injectedKeys.push(key);
 
-  return { transfers, injectedKeys };
+  return {
+    transfers,
+    injectedKeys,
+    dynamicText: {
+      situation: `${targetFilename8} from John Deere failed — a partial file was received (expected ${expectedBytes8.toLocaleString()} bytes, got ${receivedBytes8.toLocaleString()} bytes). This scenario is run by multiple participants to compare what information each user role can see.`,
+    },
+  };
 }
 
 // -----------------------------------------------------------------------
@@ -410,6 +530,7 @@ export interface ScenarioMeta {
   name: string;
   persona: string;
   personaRole: string;
+  personaDescription: string;
   situation: string;
   tasks: string[];
   fn: (dateStr: string) => ScenarioResult;
@@ -421,10 +542,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 1,
     name: "Monday Morning Triage",
-    persona: "David Chen",
+    persona: "You",
     personaRole: "Senior File Transfer Analyst, Pinnacle National Bank",
+    personaDescription:
+      "You manage the MFT infrastructure at Pinnacle National Bank. You're responsible for ensuring all file transfers complete successfully, onboarding new partners, troubleshooting failures, and reporting transfer health to IT leadership. You know protocols, understand PGP, and can read log files. You use this platform all day.",
     situation:
-      "It's Monday morning. David needs to review weekend transfer activity and identify anything that needs immediate attention before the trading day begins.",
+      "It's Monday morning. You need to review weekend transfer activity and identify anything that needs immediate attention before the trading day begins.",
     tasks: [
       "Review the weekend activity. How many transfers ran? How many succeeded vs. failed?",
       "Identify the failed transfers. What went wrong with each?",
@@ -438,10 +561,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 2,
     name: "PGP Key Rotation Fallout",
-    persona: "David Chen",
+    persona: "You",
     personaRole: "Senior File Transfer Analyst, Pinnacle National Bank",
+    personaDescription:
+      "You manage the MFT infrastructure at Pinnacle National Bank. You're responsible for ensuring all file transfers complete successfully, onboarding new partners, troubleshooting failures, and reporting transfer health to IT leadership. You know protocols, understand PGP, and can read log files. You use this platform all day.",
     situation:
-      "It's Friday morning. The security team rotated PGP keys last night. David needs to check if the key rotation caused any issues with incoming file transfers.",
+      "It's Friday morning. The security team rotated PGP keys last night. You need to check if the key rotation caused any issues with incoming file transfers.",
     tasks: [
       "Are there any transfer failures this morning? How many and from which partners?",
       "What's the common error message? What's the likely root cause?",
@@ -455,10 +580,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 3,
     name: "New Partner Onboarding",
-    persona: "David Chen",
+    persona: "You",
     personaRole: "Senior File Transfer Analyst, Pinnacle National Bank",
+    personaDescription:
+      "You manage the MFT infrastructure at Pinnacle National Bank. You're responsible for ensuring all file transfers complete successfully, onboarding new partners, troubleshooting failures, and reporting transfer health to IT leadership. You know protocols, understand PGP, and can read log files. You use this platform all day.",
     situation:
-      "Lakeshore Clearing was onboarded as a new partner last week. David is doing a post-onboarding health check on their transfer activity to verify the configuration is correct.",
+      "Lakeshore Clearing was onboarded as a new partner last week. You are doing a post-onboarding health check on their transfer activity to verify the configuration is correct. Per the onboarding spec, Lakeshore sends two file types — margin_call_*.dat and collateral_*.dat — and all of them should be delivered to the Pinnacle Treasury App (/Treasury/Inbox on sftp-treasury.pinnaclenb.com).",
     tasks: [
       "How many transfers came from Lakeshore today? Were they all successful?",
       "Look at the delivery details — are all files going to the correct destination?",
@@ -472,8 +599,10 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 4,
     name: "Where's the Settlement File?",
-    persona: "David Chen",
+    persona: "You",
     personaRole: "Senior File Transfer Analyst, Pinnacle National Bank",
+    personaDescription:
+      "You work in Pinnacle National Bank's operations team. You don't manage the MFT infrastructure, but you depend on file transfers to do your job. When a settlement file doesn't arrive, you're the one who gets the phone call. You know file names and partner names but not protocols or server internals.",
     situation:
       "It's mid-afternoon. The Treasury team just called — they received settlement files 001 through 004 from Meridian Capital but file 005 is missing. They need it by end of day for reconciliation.",
     tasks: [
@@ -489,10 +618,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 5,
     name: "End-of-Quarter Regulatory Batch",
-    persona: "David Chen",
+    persona: "You",
     personaRole: "Senior File Transfer Analyst, Pinnacle National Bank",
+    personaDescription:
+      "You work in Pinnacle National Bank's operations team. You don't manage the MFT infrastructure, but you depend on file transfers to do your job. When a settlement file doesn't arrive, you're the one who gets the phone call. You know file names and partner names but not protocols or server internals.",
     situation:
-      "It's end of quarter. Pinnacle must submit 12 regulatory files to the Federal Reserve by 5 PM. David is monitoring the batch submission progress.",
+      "It's end of quarter. Pinnacle must submit 12 regulatory files to the Federal Reserve by 5 PM. You are monitoring the batch submission progress.",
     tasks: [
       "How many of the 12 regulatory files have been submitted successfully?",
       "Which file(s) failed? What's the error message?",
@@ -506,10 +637,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 6,
     name: "Did You Receive Our File?",
-    persona: "Karen Mitchell",
+    persona: "You",
     personaRole: "Operations Analyst, John Deere Financial",
+    personaDescription:
+      "You're a file operations coordinator at John Deere Financial. You send loan document packages to Pinnacle National Bank and need to confirm they were received. You have a portal login that shows only John Deere's transfers. You don't need to know what SFTP, PGP, or staging means — you just need to know: did it get there?",
     situation:
-      "Karen sent loan_pkg_4471.zip.pgp to Pinnacle at 9:15 AM. Her internal team is asking for confirmation that Pinnacle received it successfully before they proceed with the loan processing workflow.",
+      "You sent loan_pkg_4471.zip.pgp to Pinnacle at 9:15 AM. Your internal team is asking for confirmation that Pinnacle received it successfully before they proceed with the loan processing workflow.",
     tasks: [
       "Log into the portal. Find loan_pkg_4471.zip.pgp.",
       "Was it received successfully? What status do you see?",
@@ -523,10 +656,12 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 7,
     name: "Why Was My File Rejected?",
-    persona: "Karen Mitchell",
+    persona: "You",
     personaRole: "Operations Analyst, John Deere Financial",
+    personaDescription:
+      "You're a file operations coordinator at John Deere Financial. You send loan document packages to Pinnacle National Bank and need to confirm they were received. You have a portal login that shows only John Deere's transfers. You don't need to know what SFTP, PGP, or staging means — you just need to know: did it get there?",
     situation:
-      "John Deere sent several loan packages to Pinnacle today. One of them — loan_pkg_4502.zip.pgp — was rejected. Karen needs to understand why so she can report back to her team.",
+      "John Deere sent several loan packages to Pinnacle today. One of them — loan_pkg_4502.zip.pgp — was rejected. You need to understand why so you can report back to your team.",
     tasks: [
       "Find the rejected file. What status does it show?",
       "What reason is given for the rejection?",
@@ -540,8 +675,10 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 8,
     name: "The Same Failure, Three Perspectives",
-    persona: "Multiple participants",
+    persona: "You",
     personaRole: "Compare how different user roles experience the same event",
+    personaDescription:
+      "This scenario is run by multiple participants at the same time — each assigned a different role. Depending on your assignment: you may be a Pinnacle MFT Admin who sees it as one of 15 alerts, a Pinnacle Operations Analyst who gets a call from the lending team, or a John Deere partner user who sees a failed transfer in the portal.",
     situation:
       "loan_pkg_4488.zip.pgp from John Deere failed — a partial file was received (expected 245,000 bytes, got 112,000 bytes). This scenario is run by multiple participants to compare what information each user role can see.",
     tasks: [

@@ -19,8 +19,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const scenarioMeta = SCENARIOS.find(s => s.id === scenarioId);
   if (!scenarioMeta) return NextResponse.json({ error: "Unknown scenario" }, { status: 404 });
 
-  const { transfers, injectedKeys } = scenarioMeta.fn(targetDate);
-  const answerKey = buildAnswerKey(scenarioId, targetDate, transfers, injectedKeys);
+  const { transfers, injectedKeys, dynamicText, answerKeyNotes } = scenarioMeta.fn(targetDate);
+  const answerKey = buildAnswerKey(scenarioId, targetDate, transfers, injectedKeys, answerKeyNotes);
 
   const sessionId = randomUUID();
   const queue = initDripQueue(sessionId, scenarioId, transfers as Transfer[]);
@@ -32,11 +32,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     answerKey,
     dripSessionId: sessionId,
     lastRunAt: new Date().toISOString(),
+    dynamicText: dynamicText ?? null,
   });
 
   return NextResponse.json({
     sessionId,
     totalEvents: queue.totalEvents,
     answerKey,
+    dynamicText: dynamicText ?? null,
   });
 }

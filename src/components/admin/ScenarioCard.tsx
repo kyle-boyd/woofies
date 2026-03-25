@@ -19,9 +19,10 @@ interface Props {
   meta: ScenarioMeta;
   state: ScenarioState;
   onRefresh: () => void;
+  isResetting?: boolean;
 }
 
-export function ScenarioCard({ meta, state, onRefresh }: Props) {
+export function ScenarioCard({ meta, state, onRefresh, isResetting = false }: Props) {
   const [targetDate, setTargetDate] = useState(
     state.targetDate ?? new Date().toISOString().slice(0, 10)
   );
@@ -41,33 +42,34 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
     abortRef.current = false;
 
     try {
-      // Step 1: generate and get session
+      // Step 1: generate — returns full transfer list
       const res = await fetch(`/api/scenarios/${meta.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetDate }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const { sessionId, total, answerKey } = await res.json();
+      const { transfers, total, answerKey, dynamicText } = await res.json();
       setProgress({ submitted: 0, total });
 
-      // Step 2: submit loop
-      let remaining = total;
-      while (remaining > 0 && !abortRef.current) {
+      // Step 2: submit in batches (client drives cursor, no server session)
+      const batchSize = 10;
+      let cursor = 0;
+      while (cursor < total && !abortRef.current) {
+        const batch = transfers.slice(cursor, cursor + batchSize);
         const nextRes = await fetch(`/api/submit/next`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, batchSize: 10 }),
+          body: JSON.stringify({ transfers: batch }),
         });
         if (!nextRes.ok) throw new Error(await nextRes.text());
         const data = await nextRes.json();
-        remaining = data.remaining;
         if (data.errors?.length > 0) {
           setSubmitErrors(prev => [...prev, ...data.errors]);
         }
-        setProgress({ submitted: total - remaining, total });
-        if (data.done) break;
-        await new Promise(r => setTimeout(r, 50));
+        cursor += batch.length;
+        setProgress({ submitted: cursor, total });
+        if (cursor < total) await new Promise(r => setTimeout(r, 50));
       }
 
       // Persist answer key to localStorage
@@ -76,6 +78,7 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
         targetDate,
         answerKey,
         lastRunAt: new Date().toISOString(),
+        dynamicText: dynamicText ?? null,
       });
       onRefresh();
     } catch (err) {
@@ -141,8 +144,29 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
     onRefresh();
   }, [meta.id, state.frozen, onRefresh]);
 
+  const handleFinish = useCallback(async () => {
+    await fetch(`/api/scenarios/${meta.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ finished: true }),
+    });
+    saveToLocalStorage(meta.id, { status: "finished", frozen: false });
+    onRefresh();
+  }, [meta.id, onRefresh]);
+
+  const handleReset = useCallback(async () => {
+    await fetch(`/api/scenarios/${meta.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reset: true }),
+    });
+    localStorage.removeItem(`woofies_scenario_${meta.id}`);
+    onRefresh();
+  }, [meta.id, onRefresh]);
+
   const isRunning = loading !== null;
   const isFrozen = state.frozen;
+  const isFinished = state.status === "finished";
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
@@ -164,7 +188,7 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
         </div>
       </div>
 
-      <p className="mt-2 text-sm text-gray-600 line-clamp-2">{meta.situation}</p>
+      <p className="mt-2 text-sm text-gray-600 line-clamp-2">{state.dynamicText?.situation ?? meta.situation}</p>
 
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
         <span>~{meta.transferRange[0]}–{meta.transferRange[1]} transfers</span>
@@ -172,24 +196,24 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
         <span>~{Math.round(meta.transferRange[0] * 9 / 60)}–{Math.round(meta.transferRange[1] * 9 / 60)} min to drip</span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           onClick={handleGenerateSubmit}
-          disabled={isFrozen || isRunning}
+          disabled={isFrozen || isRunning || isFinished}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-alpine-700 text-white border border-alpine-900 hover:bg-alpine-800 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading === "submit" ? "Submitting…" : "Generate & Submit"}
         </button>
         <button
           onClick={handleGenerateDrip}
-          disabled={isFrozen || isRunning}
+          disabled={isFrozen || isRunning || isFinished}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-alpine-500 text-white border border-alpine-700 hover:bg-alpine-600 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading === "drip" ? "Dripping…" : "Generate & Drip"}
         </button>
         <button
           onClick={handleFreeze}
-          disabled={isRunning}
+          disabled={isRunning || isFinished}
           className={`px-3 py-1.5 text-xs font-medium rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
             isFrozen
               ? "bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
@@ -205,6 +229,25 @@ export function ScenarioCard({ meta, state, onRefresh }: Props) {
           >
             Stop
           </button>
+        )}
+        {state.status !== "not_run" && (
+          isFinished ? (
+            <button
+              onClick={handleReset}
+              disabled={isRunning || isResetting}
+              className="ml-auto px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Reset
+            </button>
+          ) : (
+            <button
+              onClick={handleFinish}
+              disabled={isRunning || isResetting}
+              className="ml-auto px-3 py-1.5 text-xs font-medium rounded-lg bg-alpine-700 text-white border border-alpine-900 hover:bg-alpine-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Finish
+            </button>
+          )
         )}
       </div>
 

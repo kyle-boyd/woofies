@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getState, setState, freezeScenario, unfreezeScenario } from "@/lib/state/store";
+import { getState, setState, freezeScenario, unfreezeScenario, finishScenario } from "@/lib/state/store";
 
 export function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return params.then(({ id }) => {
@@ -16,6 +16,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!state) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
+
+  if (body.finished === true) {
+    finishScenario(scenarioId);
+  }
+
+  if (body.reset === true) {
+    setState(scenarioId, { status: "not_run", frozen: false, answerKey: null, dripSessionId: null, lastRunAt: null, dynamicText: null });
+  }
 
   if (typeof body.frozen === "boolean") {
     if (body.frozen) {
@@ -38,6 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       frozen: body.frozen ?? false,
       dripSessionId: body.dripSessionId ?? null,
       lastRunAt: body.lastRunAt ?? null,
+      dynamicText: body.dynamicText ?? null,
     });
   }
 

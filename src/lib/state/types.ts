@@ -1,6 +1,6 @@
 import type { AnswerKey } from "@/lib/generator/types";
 
-export type ScenarioStatus = "not_run" | "submitted" | "drip_in_progress" | "frozen";
+export type ScenarioStatus = "not_run" | "submitted" | "drip_in_progress" | "frozen" | "finished";
 
 export interface ScenarioState {
   id: number;
@@ -10,4 +10,5 @@ export interface ScenarioState {
   frozen: boolean;
   dripSessionId: string | null;
   lastRunAt: string | null; // ISO timestamp
+  dynamicText: { situation?: string; tasks?: string[] } | null;
 }

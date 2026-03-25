@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { SCENARIOS } from "@/lib/generator/scenarios";
 import { buildAnswerKey } from "@/lib/generator/answerKey";
-import { getState, setState, storeSubmissionQueue } from "@/lib/state/store";
+import { getState, setState } from "@/lib/state/store";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,14 +17,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!scenarioMeta) return NextResponse.json({ error: "Unknown scenario" }, { status: 404 });
 
   // Generate transfers
-  const { transfers, injectedKeys } = scenarioMeta.fn(targetDate);
+  const { transfers, injectedKeys, dynamicText, answerKeyNotes } = scenarioMeta.fn(targetDate);
 
   // Build answer key
-  const answerKey = buildAnswerKey(scenarioId, targetDate, transfers, injectedKeys);
-
-  // Store submission queue for client-driven loop
-  const sessionId = randomUUID();
-  storeSubmissionQueue(sessionId, transfers as Array<[string, unknown[]]>);
+  const answerKey = buildAnswerKey(scenarioId, targetDate, transfers, injectedKeys, answerKeyNotes);
 
   // Update state
   setState(scenarioId, {
@@ -33,11 +28,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     targetDate,
     answerKey,
     lastRunAt: new Date().toISOString(),
+    dynamicText: dynamicText ?? null,
   });
 
   return NextResponse.json({
-    sessionId,
+    transfers,
     total: transfers.length,
     answerKey,
+    dynamicText: dynamicText ?? null,
   });
 }
