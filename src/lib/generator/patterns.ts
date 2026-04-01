@@ -107,18 +107,15 @@ export function patternRetrySuccess(
 
   // First delivery attempt — fails
   t = advanceTime(t, 2, 5);
-  const deliveryKey1 = generateDeliveryKey(t, ctx);
-  events.push(buildStartedDelivery(t, arrivedKey, deliveryKey1, partnerKey, filename, fileSize, destKey, source));
+  const deliveryKey = generateDeliveryKey(t, ctx);
+  events.push(buildStartedDelivery(t, arrivedKey, deliveryKey, partnerKey, filename, fileSize, destKey, source));
   t = advanceTime(t, 5, 30);
   const errMsg = RETRY_ERRORS[Math.floor(Math.random() * RETRY_ERRORS.length)];
-  events.push(buildFailedDelivery(t, arrivedKey, deliveryKey1, partnerKey, filename, errMsg, destKey, source));
+  events.push(buildFailedDelivery(t, arrivedKey, deliveryKey, partnerKey, filename, errMsg, destKey, source));
 
-  // Retry after 60-300 seconds
+  // Retry after 60-300 seconds — same deliveryKey, no new StartedDelivery
   t = advanceTime(t, 60, 300);
-  const deliveryKey2 = generateDeliveryKey(t, ctx);
-  events.push(buildStartedDelivery(t, arrivedKey, deliveryKey2, partnerKey, filename, fileSize, destKey, source));
-  t = advanceTime(t, 5, 30);
-  events.push(buildCompleteDelivery(t, arrivedKey, deliveryKey2, partnerKey, filename, destKey, source));
+  events.push(buildCompleteDelivery(t, arrivedKey, deliveryKey, partnerKey, filename, destKey, source));
 
   t = advanceTime(t, 1, 3);
   events.push(buildCompleteTransfer(t, arrivedKey, "Transfer Successful", source));
