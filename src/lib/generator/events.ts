@@ -53,7 +53,9 @@ export function buildProcessDetails(
   arrivedKey: string,
   layerType: string,
   layerFilename: string,
-  source?: EventSource
+  source?: EventSource,
+  layerStatus?: string,
+  layerMessage?: string
 ): FtvEvent {
   const src = source ?? pickEventSource();
   return withSource(
@@ -65,6 +67,8 @@ export function buildProcessDetails(
       ARRIVEDFILE_KEY: arrivedKey,
       LayerType: layerType,
       LayerFilename: layerFilename,
+      ...(layerStatus ? { LayerStatus: layerStatus } : {}),
+      ...(layerMessage ? { LayerMessage: layerMessage } : {}),
     },
     src
   );

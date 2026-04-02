@@ -5,7 +5,6 @@ import { generateFilename } from "./filenames";
 import {
   buildStartTransfer,
   buildProcessDetails,
-  buildProcessing,
   buildStartedDelivery,
   buildCompleteDelivery,
   buildFailedDelivery,
@@ -146,7 +145,8 @@ export function patternPgpFailure(
 
   t = advanceTime(t, 1, 3);
   events.push(buildProcessDetails(t, arrivedKey, "PGP",
-    filename.replace(".pgp", "").replace(".zip", ""), source));
+    filename.replace(".pgp", "").replace(".zip", ""), source,
+    "Failed", `Decrypt failed: ${errorVariant}`));
 
   t = advanceTime(t, 1, 2);
   events.push(buildFailTransfer(t, arrivedKey, `Receive failed: PGP decrypt error — ${errorVariant}`, source));
@@ -222,10 +222,12 @@ export function patternPartialFile(
   const events: FtvEvent[] = [];
   let t = startTime;
 
-  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, exp, "SUCCESS", source));
+  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, exp, "FAILED", source,
+    `Partial file: expected ${exp} bytes, received ${rec} bytes`));
 
   t = advanceTime(t, 1, 3);
-  events.push(buildProcessDetails(t, arrivedKey, "Validate Checksum", filename, source));
+  events.push(buildProcessDetails(t, arrivedKey, "Validate Checksum", filename, source,
+    "Failed", `Partial file: expected ${exp} bytes, received ${rec} bytes`));
 
   t = advanceTime(t, 1, 2);
   events.push(buildFailTransfer(t, arrivedKey,
@@ -257,7 +259,7 @@ export function patternVirusScan(
   const events: FtvEvent[] = [];
   let t = startTime;
 
-  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "SUCCESS", source));
+  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "FAILED", source));
 
   // ZIP + PGP if applicable
   if (p.pgp && filename.endsWith(".pgp")) {
@@ -268,8 +270,8 @@ export function patternVirusScan(
   }
 
   t = advanceTime(t, 1, 3);
-  events.push(buildProcessing(t, arrivedKey, "Virus Scan", filename,
-    "Failed", "Threat detected: Trojan.GenericKD", source));
+  events.push(buildProcessDetails(t, arrivedKey, "Virus Scan", filename, source,
+    "Failed", "Threat detected: Trojan.GenericKD"));
 
   t = advanceTime(t, 1, 2);
   events.push(buildFailTransfer(t, arrivedKey, "File quarantined — virus scan failure", source));

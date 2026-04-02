@@ -107,20 +107,21 @@ export function buildAnswerKey(
   const scenarioName = scenarioMeta?.name ?? `Scenario ${scenarioId}`;
 
   let totalSuccess = 0;
-  let totalFailed = 0;
-  let totalStalled = 0;
 
   for (const [, events] of allTransfers) {
     if (events.some(e => e.Event === "CompleteTransfer")) totalSuccess++;
-    else if (events.some(e => e.Event === "FailTransfer")) totalFailed++;
-    else totalStalled++;
   }
 
   const injectedSet = new Set(injectedKeys);
+  let totalFailed = 0;
+  let totalStalled = 0;
   const findings: Finding[] = [];
 
   for (const [arrivedKey, events] of allTransfers) {
     if (!injectedSet.has(arrivedKey)) continue;
+
+    if (events.some(e => e.Event === "FailTransfer")) totalFailed++;
+    else if (!events.some(e => e.Event === "CompleteTransfer")) totalStalled++;
 
     const startEvt = getStartEvent(events);
     const filename = (startEvt?.ProducerFilename as string) ?? "unknown";
