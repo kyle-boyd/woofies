@@ -19,7 +19,8 @@ export function buildStartTransfer(
   filename: string,
   fileSize: number,
   status = "SUCCESS",
-  source?: EventSource
+  source?: EventSource,
+  errorMessage?: string
 ): FtvEvent {
   const p = PARTNERS[partnerKey];
   const src = source ?? pickEventSource();
@@ -41,6 +42,7 @@ export function buildStartTransfer(
       ProducerPattern: p.pattern,
       Direction: p.direction,
       Status: status,
+      ...(errorMessage ? { ErrorMessage: errorMessage } : {}),
     },
     src
   );

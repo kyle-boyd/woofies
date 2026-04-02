@@ -23,16 +23,6 @@ const RETRY_ERRORS = [
   "Remote host not responding",
 ];
 
-// Helper: add processing steps (ZIP/PGP go as ProcessDetails, others as PROCESSING)
-function addProcessingSteps(
-  events: FtvEvent[],
-  dt: DateTime,
-  arrivedKey: string,
-  steps: [FtvEvent[], DateTime]
-): DateTime {
-  return steps[1];
-}
-
 // -----------------------------------------------------------------------
 // Pattern 1: Happy path — ~85% of transfers
 // -----------------------------------------------------------------------
@@ -44,7 +34,6 @@ export function patternHappyPath(
   fileSize?: number,
   destKey?: string
 ): Transfer {
-  const p = PARTNERS[partnerKey];
   const dateStr = startTime.toFormat("yyyyMMdd");
   if (!filename || !fileSize) {
     const [fn, fs] = generateFilename(partnerKey, dateStr, ctx);
@@ -146,22 +135,21 @@ export function patternPgpFailure(
   const events: FtvEvent[] = [];
   let t = startTime;
 
-  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "SUCCESS", source));
+  events.push(buildStartTransfer(partnerKey, t, arrivedKey, filename, fileSize, "FAILED", source,
+    `Decrypt failed: ${errorVariant}`));
 
-  // ZIP step if .zip.pgp
+  // ZIP and PGP layers are part of receive — emit as ProcessDetails (ARRIVED_FILE stage)
   if (filename.endsWith(".zip.pgp") || filename.endsWith(".zip")) {
     t = advanceTime(t, 1, 3);
     events.push(buildProcessDetails(t, arrivedKey, "ZIP", filename.replace(".pgp", ""), source));
   }
 
-  // PGP decrypt fails
   t = advanceTime(t, 1, 3);
-  events.push(buildProcessing(t, arrivedKey, "PGP",
-    filename.replace(".pgp", "").replace(".zip", ""),
-    "Failed", `Decrypt failed: ${errorVariant}`, source));
+  events.push(buildProcessDetails(t, arrivedKey, "PGP",
+    filename.replace(".pgp", "").replace(".zip", ""), source));
 
   t = advanceTime(t, 1, 2);
-  events.push(buildFailTransfer(t, arrivedKey, "Processing failure: PGP decrypt", source));
+  events.push(buildFailTransfer(t, arrivedKey, `Receive failed: PGP decrypt error — ${errorVariant}`, source));
 
   return [arrivedKey, events];
 }

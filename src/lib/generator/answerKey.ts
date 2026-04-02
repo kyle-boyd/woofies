@@ -43,7 +43,7 @@ function detectOutcome(events: FtvEvent[]): Finding["outcome"] {
     if (path && path.toLowerCase().includes("operations")) return "Misrouted";
   }
 
-  return "FailTransfer";
+  return "Success";
 }
 
 function buildDetails(outcome: Finding["outcome"], events: FtvEvent[]): string {
@@ -79,6 +79,11 @@ function buildDetails(outcome: Finding["outcome"], events: FtvEvent[]): string {
     case "RetrySuccess": {
       const failD = events.find(e => e.Event === "FailedDelivery");
       return `First delivery attempt failed (${failD?.ErrorMessage ?? "unknown error"}). Second attempt succeeded.`;
+    }
+    case "Success": {
+      const completeD = events.find(e => e.Event === "CompleteDelivery");
+      const completeT = events.find(e => e.Event === "CompleteTransfer");
+      return `Transfer completed successfully. Delivery completed at ${formatET(completeD?.TIME as string)}. Transfer closed at ${formatET(completeT?.TIME as string)}.`;
     }
   }
 }
@@ -133,6 +138,7 @@ export function buildAnswerKey(
       case "Misrouted": description = "Misrouted delivery — wrong destination"; break;
       case "SlowDelivery": description = "Slow delivery (45+ minutes)"; break;
       case "RetrySuccess": description = "Retry then success"; break;
+      case "Success": description = "Transfer completed successfully"; break;
     }
 
     findings.push({

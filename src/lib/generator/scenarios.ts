@@ -117,7 +117,7 @@ export function scenario2(dateStr: string): ScenarioResult {
     const variant = i === 0 ? "corrupted input data" : "invalid key";
     const [key, evts] = patternPgpFailure(majorPgp, majorTimes[i], c, undefined, undefined, variant);
     transfers.push([key, evts]);
-    injectedKeys.push(key);
+    if (i === 0) injectedKeys.push(key); // only the outlier goes in the answer key
   }
 
   // Minor PGP partner: 4-6 failures, all "invalid key"
@@ -130,7 +130,7 @@ export function scenario2(dateStr: string): ScenarioResult {
   for (const t of minorTimes) {
     const [key, evts] = patternPgpFailure(minorPgp, t, c, undefined, undefined, "invalid key");
     transfers.push([key, evts]);
-    injectedKeys.push(key);
+    // "invalid key" failures are background context — not injected into the answer key
   }
 
   return { transfers, injectedKeys };
@@ -210,6 +210,12 @@ export function scenario3(dateStr: string): ScenarioResult {
     injectedKeys,
     dynamicText: {
       situation: `${onboarding.name} was onboarded as a new partner last week. You are doing a post-onboarding health check on their transfer activity to verify the configuration is correct. Per the onboarding spec, ${onboarding.name} sends ${onboarding.fileTypesDesc} and all of them should be delivered to the ${onboarding.destApp} (${onboarding.destPath} on ${onboarding.destHost}).`,
+      tasks: [
+        `How many transfers came from ${onboarding.name} today? Were they all successful?`,
+        "Look at the delivery details — are all files going to the correct destination?",
+        "Are the transfer speeds normal? Is anything unusually slow?",
+        "Based on your findings, is this partner healthy or are there issues to address?",
+      ],
     },
     answerKeyNotes: `${onboarding.name} generated ${partnerCount} transfers in this run.`,
   };

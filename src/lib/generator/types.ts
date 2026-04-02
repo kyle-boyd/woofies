@@ -45,7 +45,7 @@ export interface Finding {
   filename: string;
   partner: string;
   startTime: string; // human-readable ET timestamp
-  outcome: "FailTransfer" | "Stalled" | "Misrouted" | "SlowDelivery" | "RetrySuccess";
+  outcome: "FailTransfer" | "Stalled" | "Misrouted" | "SlowDelivery" | "RetrySuccess" | "Success";
   errorMessage?: string;
   details: string;
 }

@@ -3,9 +3,30 @@
 import { useState, useCallback, useRef } from "react";
 import type { ScenarioState } from "@/lib/state/types";
 import type { ScenarioMeta } from "@/lib/generator/scenarios";
+import type { AnswerKey } from "@/lib/generator/types";
 import { StatusBadge } from "./StatusBadge";
-import { AnswerKeyPanel } from "./AnswerKeyPanel";
+import { AnswerKeyPanel, RunHistoryPanel, type RunHistoryEntry } from "./AnswerKeyPanel";
 import { DripProgressBar } from "./DripProgressBar";
+
+const HISTORY_KEY = (id: number) => `woofies_history_${id}`;
+
+function loadHistory(id: number): RunHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY(id));
+    return raw ? (JSON.parse(raw) as RunHistoryEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendHistory(id: number, entry: RunHistoryEntry): RunHistoryEntry[] {
+  const prev = loadHistory(id);
+  const next = [...prev, entry];
+  try {
+    localStorage.setItem(HISTORY_KEY(id), JSON.stringify(next));
+  } catch {}
+  return next;
+}
 
 function saveToLocalStorage(id: number, state: Partial<ScenarioState>) {
   try {
@@ -31,6 +52,10 @@ export function ScenarioCard({ meta, state, onRefresh, isResetting = false }: Pr
   const [dripProgress, setDripProgress] = useState<{ submitted: number; total: number; nextAt: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
+  const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => {
+    if (typeof window === "undefined") return [];
+    return loadHistory(meta.id);
+  });
   const dripRef = useRef<{ sessionId: string; total: number } | null>(null);
   const abortRef = useRef(false);
 
@@ -72,12 +97,22 @@ export function ScenarioCard({ meta, state, onRefresh, isResetting = false }: Pr
         if (cursor < total) await new Promise(r => setTimeout(r, 50));
       }
 
+      const runAt = new Date().toISOString();
+
+      // Archive previous answer key into run history before overwriting
+      if (state.answerKey) {
+        const prevDate = state.targetDate ?? targetDate;
+        const prevRunAt = state.lastRunAt ?? runAt;
+        const updated = appendHistory(meta.id, { runAt: prevRunAt, targetDate: prevDate, answerKey: state.answerKey as AnswerKey });
+        setRunHistory(updated);
+      }
+
       // Persist answer key to localStorage
       saveToLocalStorage(meta.id, {
         status: "submitted",
         targetDate,
         answerKey,
-        lastRunAt: new Date().toISOString(),
+        lastRunAt: runAt,
         dynamicText: dynamicText ?? null,
       });
       onRefresh();
@@ -290,6 +325,7 @@ export function ScenarioCard({ meta, state, onRefresh, isResetting = false }: Pr
       )}
 
       {state.answerKey && <AnswerKeyPanel answerKey={state.answerKey} />}
+      <RunHistoryPanel history={runHistory} />
     </div>
   );
 }
