@@ -23,10 +23,10 @@ function getErrorMessage(events: FtvEvent[]): string | undefined {
 
 function detectOutcome(events: FtvEvent[]): Finding["outcome"] {
   const hasFailTransfer = events.some(e => e.Event === "FailTransfer");
-  const hasFailDelivery = events.some(e => e.Event === "FailedDelivery");
   const hasCompleteTransfer = events.some(e => e.Event === "CompleteTransfer");
+  const hasFailedProcessDetails = events.some(e => e.Event === "ProcessDetails" && e.LayerStatus === "Failed");
 
-  if (hasFailDelivery && hasCompleteTransfer) return "RetrySuccess";
+  if (!hasFailTransfer && hasCompleteTransfer && hasFailedProcessDetails) return "RetrySuccess";
   if (hasFailTransfer) return "FailTransfer";
 
   const isStalled = !hasFailTransfer && !hasCompleteTransfer;
@@ -77,8 +77,8 @@ function buildDetails(outcome: Finding["outcome"], events: FtvEvent[]): string {
       return "Delivery was unusually slow (45+ minutes).";
     }
     case "RetrySuccess": {
-      const failD = events.find(e => e.Event === "FailedDelivery");
-      return `First delivery attempt failed (${failD?.ErrorMessage ?? "unknown error"}). Second attempt succeeded.`;
+      const failD = events.find(e => e.Event === "ProcessDetails" && e.LayerStatus === "Failed");
+      return `First delivery attempt failed (${(failD?.LayerMessage as string) ?? "unknown error"}). Second attempt succeeded.`;
     }
     case "Success": {
       const completeD = events.find(e => e.Event === "CompleteDelivery");

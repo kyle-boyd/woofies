@@ -100,6 +100,45 @@ export function buildProcessing(
   );
 }
 
+export function buildDeliveryProcessingDetails(
+  dt: DateTime,
+  arrivedKey: string,
+  deliveryKey: string,
+  partnerKey: string,
+  filename: string,
+  layerStatus: string,
+  layerMessage: string,
+  destKey?: string,
+  source?: EventSource
+): FtvEvent {
+  const p = PARTNERS[partnerKey];
+  const dk = destKey ?? p.destination;
+  const d = DESTINATIONS[dk];
+  const src = source ?? pickEventSource();
+  return withSource(
+    {
+      STAGE: "DELIVERY",
+      Event: "ProcessDetails",
+      ARRIVEDFILE_KEY: arrivedKey,
+      EVENT_KEY: deliveryKey,
+      TIME: msTimestamp(dt),
+      ConsumerName: d.name,
+      ConsumerFilename: filename,
+      ConsumerOperation: "Put",
+      ConsumerRemoteHost: d.host,
+      ConsumerProtocol: d.protocol,
+      ConsumerUserId: d.user_id,
+      ConsumerPort: d.port,
+      ConsumerPath: d.path,
+      LayerType: "Delivery",
+      LayerFilename: filename,
+      LayerStatus: layerStatus,
+      LayerMessage: layerMessage,
+    },
+    src
+  );
+}
+
 export function buildStartedDelivery(
   dt: DateTime,
   arrivedKey: string,

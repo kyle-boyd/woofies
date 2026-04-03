@@ -49,7 +49,6 @@ export async function POST(req: NextRequest) {
   }
 
   const ctx = makeContext();
-  const dateYMD = date.replace(/-/g, "");
   const startTime = randomBusinessTime(date);
   const [arrivedKey, events] = patternFn(partnerKey, startTime, ctx);
 

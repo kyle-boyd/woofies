@@ -5,6 +5,7 @@ import { generateFilename } from "./filenames";
 import {
   buildStartTransfer,
   buildProcessDetails,
+  buildDeliveryProcessingDetails,
   buildStartedDelivery,
   buildCompleteDelivery,
   buildFailedDelivery,
@@ -99,7 +100,7 @@ export function patternRetrySuccess(
   events.push(buildStartedDelivery(t, arrivedKey, deliveryKey, partnerKey, filename, fileSize, destKey, source));
   t = advanceTime(t, 5, 30);
   const errMsg = RETRY_ERRORS[Math.floor(Math.random() * RETRY_ERRORS.length)];
-  events.push(buildFailedDelivery(t, arrivedKey, deliveryKey, partnerKey, filename, errMsg, destKey, source));
+  events.push(buildDeliveryProcessingDetails(t, arrivedKey, deliveryKey, partnerKey, filename, "Failed", errMsg, destKey, source));
 
   // Retry after 60-300 seconds — same deliveryKey, no new StartedDelivery
   t = advanceTime(t, 60, 300);
